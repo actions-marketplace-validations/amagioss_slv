@@ -1,57 +1,250 @@
 .features {
-  padding: 4rem 0;
-  background-color: var(--ifm-background-surface-color);
+  padding: 0;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.featuresGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  padding: 2rem;
+  width: 100%;
 }
 
 .feature {
   text-align: center;
-  padding: 2rem;
+  padding: 2.5rem 2rem;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  transform: translateY(50px) scale(0.9);
+  border-radius: 12px;
+}
+
+.feature:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(157, 58, 79, 0.15);
+}
+
+/* Animate features when parent section is visible */
+/* Use attribute selector as fallback */
+[data-features-visible="true"] .feature,
+:global([data-features-visible="true"]) .feature {
+  animation: fadeInUp 0.8s ease forwards;
+}
+
+.feature::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(
+    circle at center,
+    rgba(157, 58, 79, 0.2) 0%,
+    rgba(157, 58, 79, 0.1) 30%,
+    transparent 70%
+  );
+  opacity: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.feature:hover::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+[data-theme='dark'] .feature::before {
+  background: radial-gradient(
+    circle at center,
+    rgba(196, 90, 111, 0.20) 0%,
+    rgba(196, 90, 111, 0.12) 30%,
+    transparent 70%
+  );
 }
 
 .featureSvg {
-  height: 80px;
-  width: 80px;
-  margin-bottom: 1rem;
+  height: 70px;
+  width: 70px;
+  margin-bottom: 1.5rem;
   fill: var(--ifm-color-primary);
   stroke: var(--ifm-color-primary);
+  filter: drop-shadow(0 0 8px rgba(157, 58, 79, 0.3));
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 1;
+  animation: iconFloat 4s ease-in-out infinite;
+  animation-delay: calc(var(--feature-index, 0) * 0.3s);
 }
 
-h3 {
-  margin-top: 1rem;
-  font-size: 1.5rem;
+.feature:hover .featureSvg {
+  fill: var(--slv-ruby-mid);
+  stroke: var(--slv-ruby-mid);
+  filter: drop-shadow(0 0 20px rgba(157, 58, 79, 0.8));
+  transform: scale(1.15) rotateY(5deg);
+  animation-play-state: paused;
 }
 
-.feature p{
-  color: var(--ifm-color-primary-light);
-  font-size: 1rem;
-  margin-top: 0.5rem;
+@keyframes iconFloat {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) scale(1.03);
+  }
+}
+
+[data-theme='dark'] .featureSvg {
+  filter: drop-shadow(0 0 8px rgba(196, 90, 111, 0.4));
+}
+
+[data-theme='dark'] .featureSvg:hover {
+  fill: var(--slv-ruby-light);
+  stroke: var(--slv-ruby-light);
+  filter: drop-shadow(0 0 20px rgba(196, 90, 111, 0.7));
 }
 
 @keyframes fadeInUp {
   0% {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(50px) scale(0.9) rotateX(-10deg);
+  }
+  60% {
+    transform: translateY(-5px) scale(1.02) rotateX(2deg);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1) rotateX(0deg);
   }
 }
 
+/* Ensure features are hidden until visible */
 .feature {
-  text-align: center;
-  padding: 2rem;
-  opacity: 0; /* Initially invisible */
-  animation: fadeInUp 2s ease forwards;
+  visibility: hidden;
 }
 
-/* Optional: Stagger animation slightly for each feature */
-.features .col:nth-child(1) .feature {
-  animation-delay: 1s;
+[data-features-visible="true"] .feature,
+:global([data-features-visible="true"]) .feature {
+  visibility: visible;
 }
-.features .col:nth-child(2) .feature {
-  animation-delay: 1s;
+
+/* Stagger animation for each feature when section is visible */
+[data-features-visible="true"] .featuresGrid .feature:nth-child(1),
+:global([data-features-visible="true"]) .featuresGrid .feature:nth-child(1) {
+  animation-delay: 0.15s;
+  --feature-index: 0;
 }
-.features .col:nth-child(3) .feature {
-  animation-delay: 1s;
+
+[data-features-visible="true"] .featuresGrid .feature:nth-child(2),
+:global([data-features-visible="true"]) .featuresGrid .feature:nth-child(2) {
+  animation-delay: 0.3s;
+  --feature-index: 1;
+}
+
+[data-features-visible="true"] .featuresGrid .feature:nth-child(3),
+:global([data-features-visible="true"]) .featuresGrid .feature:nth-child(3) {
+  animation-delay: 0.45s;
+  --feature-index: 2;
+}
+
+[data-features-visible="true"] .featuresGrid .feature:nth-child(4),
+:global([data-features-visible="true"]) .featuresGrid .feature:nth-child(4) {
+  animation-delay: 0.6s;
+  --feature-index: 3;
+}
+
+/* Responsive: stack on mobile */
+@media (max-width: 768px) {
+  /* Optimize animations for mobile performance */
+  .feature {
+    will-change: transform, opacity;
+  }
+
+  .featureSvg {
+    will-change: transform;
+  }
+
+  .features {
+    padding: 0;
+    width: 100%;
+  }
+
+  .featuresGrid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 1.5rem 1rem;
+    padding-bottom: 2rem; /* Extra space at bottom for readability */
+  }
+  
+  .feature {
+    padding: 2rem 1.5rem;
+    margin-bottom: 1rem; /* Extra space between features for readability */
+  }
+
+  .featureSvg {
+    height: 60px;
+    width: 60px;
+    margin-bottom: 1rem;
+  }
+
+  .feature h3 {
+    font-size: 1.25rem;
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem; /* Ensure spacing for text readability */
+  }
+
+  .feature p {
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    line-height: 1.6; /* Better line height for readability */
+  }
+
+  /* Extra padding for the last feature (quantum) to ensure text is comfortably readable */
+  .feature:last-child {
+    padding-bottom: 3rem;
+    margin-bottom: 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .featuresGrid {
+    gap: 1.25rem;
+    padding: 1rem 0.75rem;
+  }
+  
+  .feature {
+    padding: 1.5rem 1rem;
+  }
+
+  .featureSvg {
+    height: 50px;
+    width: 50px;
+    margin-bottom: 0.75rem;
+  }
+
+  .feature h3 {
+    font-size: 1.1rem;
+  }
+
+  .feature p {
+    font-size: 0.85rem;
+  }
+
+  .feature::before {
+    width: 100px;
+    height: 100px;
+  }
+
+  /* Extra padding for the last feature (quantum) on very small screens */
+  .feature:last-child {
+    padding-bottom: 3.5rem;
+    margin-bottom: 2.5rem;
+  }
 }

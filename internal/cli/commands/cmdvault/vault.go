@@ -2,10 +2,7 @@ package cmdvault
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
@@ -13,8 +10,9 @@ import (
 	"slv.sh/slv/internal/cli/commands/utils"
 	"slv.sh/slv/internal/core/environments"
 	"slv.sh/slv/internal/core/profiles"
-	"slv.sh/slv/internal/core/secretkey"
+	"slv.sh/slv/internal/core/session"
 	"slv.sh/slv/internal/core/vaults"
+	"slv.sh/slv/internal/helpers"
 )
 
 func showVault(vault *vaults.Vault) {
@@ -48,14 +46,14 @@ func showVault(vault *vaults.Vault) {
 		} else {
 			itemValueStr, err := item.ValueString()
 			if err != nil {
-				utils.ExitOnError(err)
+				utils.ExitOnError(fmt.Errorf("error getting value for %s: %w", name, err))
 			}
 			row = append(row, itemValueStr)
 		}
-		if item.IsSecret() {
-			row = append(row, "Secret")
-		} else {
+		if item.IsPlaintext() {
 			row = append(row, "Plain Text")
+		} else {
+			row = append(row, "Secret")
 		}
 		if item.EncryptedAt() != nil {
 			row = append(row, item.EncryptedAt().Format("02-Jan-2006 15:04:05"))
@@ -113,7 +111,7 @@ func showVault(vault *vaults.Vault) {
 	}
 	accessTable.AppendRows(accessTableRows)
 
-	fmt.Println("Vault ID: ", vault.Spec.Config.PublicKey)
+	fmt.Printf("Vault Name: %s\n", vault.Name)
 	fmt.Println("Vault Data:")
 	dataTable.SetStyle(table.StyleLight)
 	dataTable.Render()
@@ -127,15 +125,14 @@ func VaultCommand() *cobra.Command {
 		vaultCmd = &cobra.Command{
 			Use:     "vault",
 			Aliases: []string{"v", "vaults", "secret", "secrets"},
-			Short:   "Manage vaults/secrets with SLV",
-			Long:    `Manage vaults/secrets using SLV. SLV Vaults are files that store secrets in a key-value format.`,
+			Short:   "Manage SLV vaults",
 			Run: func(cmd *cobra.Command, args []string) {
 				vaultFile := cmd.Flag(vaultFileFlag.Name).Value.String()
 				vault, err := vaults.Get(vaultFile)
 				if err != nil {
 					utils.ExitOnError(err)
 				}
-				envSecretKey, _ := secretkey.Get()
+				envSecretKey, _ := session.GetSecretKey()
 				if envSecretKey != nil {
 					vault.Unlock(envSecretKey)
 				}
@@ -161,30 +158,11 @@ func VaultCommand() *cobra.Command {
 }
 
 func vaultFilePathCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	var vaultFiles []string
-	wd, err := os.Getwd()
-	if err != nil {
+	if vaultFiles, err := helpers.ListVaultFiles("", true); err != nil {
 		return nil, cobra.ShellCompDirectiveError
+	} else {
+		return vaultFiles, cobra.ShellCompDirectiveDefault
 	}
-	err = filepath.WalkDir(wd, func(path string, d fs.DirEntry, err error) error {
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "."+vaultFileNameExt) ||
-			strings.HasSuffix(d.Name(), vaultFileNameExt+".yaml") ||
-			strings.HasSuffix(d.Name(), vaultFileNameExt+".yml") {
-			if relPath, err := filepath.Rel(wd, path); err == nil {
-				vaultFiles = append(vaultFiles, relPath)
-			} else {
-				vaultFiles = append(vaultFiles, path)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
-	}
-	return vaultFiles, cobra.ShellCompDirectiveDefault
 }
 
 func vaultItemNameCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

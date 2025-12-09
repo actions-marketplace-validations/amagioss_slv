@@ -10,61 +10,19 @@ import (
 	"slv.sh/slv/internal/core/commons"
 	"slv.sh/slv/internal/core/environments"
 	"slv.sh/slv/internal/core/settings"
-	"xipher.org/xipher"
 )
 
 type profileConfig struct {
 	RemoteType   string            `json:"type" yaml:"type"`
+	ReadOnly     bool              `json:"readOnly" yaml:"readOnly"`
 	SyncedAt     time.Time         `json:"syncedAt" yaml:"syncedAt"`
 	SyncInterval time.Duration     `json:"syncInterval" yaml:"syncInterval"`
-	SecretKeyStr string            `json:"sk" yaml:"sk"`
 	Config       map[string]string `json:"config" yaml:"config"`
 	file         string
-	sk           *xipher.SecretKey
-}
-
-func (pc *profileConfig) getSecretKey() (sk *xipher.SecretKey, err error) {
-	if pc.sk == nil {
-		if pc.SecretKeyStr == "" {
-			if sk, err = xipher.NewSecretKey(); err != nil {
-				return nil, err
-			}
-			if skBytes, err := sk.Bytes(); err != nil {
-				return nil, err
-			} else {
-				pc.SecretKeyStr = base64.StdEncoding.EncodeToString(skBytes)
-			}
-		} else {
-			if skBytes, err := base64.StdEncoding.DecodeString(pc.SecretKeyStr); err != nil {
-				return nil, err
-			} else if sk, err = xipher.ParseSecretKey(skBytes); err != nil {
-				return nil, err
-			}
-		}
-		pc.sk = sk
-	}
-	return pc.sk, nil
-}
-
-func (pc *profileConfig) encrypt() error {
-	sk, err := pc.getSecretKey()
-	if err != nil {
-		return err
-	}
-	for _, arg := range GetRemoteTypeArgs(pc.RemoteType) {
-		if value, ok := pc.Config[arg.Name()]; ok && arg.sensitive && value != "" {
-			var ct []byte
-			if ct, err = sk.Encrypt([]byte(value), true, false); err != nil {
-				return err
-			}
-			pc.Config[arg.Name()] = base64.StdEncoding.EncodeToString(ct)
-		}
-	}
-	return nil
 }
 
 func (pc *profileConfig) decrypt() error {
-	sk, err := pc.getSecretKey()
+	sk, err := getCryptoKey()
 	if err != nil {
 		return err
 	}
@@ -84,20 +42,36 @@ func (pc *profileConfig) decrypt() error {
 
 func (pc *profileConfig) write() error {
 	pc.SyncedAt = time.Now()
-	if err := pc.encrypt(); err != nil {
+	sk, err := getCryptoKey()
+	if err != nil {
 		return err
 	}
-	return commons.WriteToYAML(pc.file, "", pc)
+	ptMap := make(map[string]string)
+	for _, arg := range GetRemoteTypeArgs(pc.RemoteType) {
+		if value, ok := pc.Config[arg.Name()]; ok && arg.sensitive && value != "" {
+			ptMap[arg.Name()] = value
+			var ct []byte
+			if ct, err = sk.Encrypt([]byte(value), true, false); err != nil {
+				return err
+			}
+			pc.Config[arg.Name()] = base64.StdEncoding.EncodeToString(ct)
+		}
+	}
+	err = commons.WriteToYAML(pc.file, pc)
+	for k, v := range ptMap {
+		pc.Config[k] = v
+	}
+	return err
 }
 
 type Profile struct {
-	name          string
-	dir           string
-	dataDir       string
-	profileConfig *profileConfig
-	settings      *settings.Settings
-	envManifest   *environments.EnvManifest
-	remote        *remote
+	name        string
+	dir         string
+	dataDir     string
+	profConfig  *profileConfig
+	settings    *settings.Settings
+	envManifest *environments.EnvManifest
+	remote      *remote
 }
 
 func (profile *Profile) Name() string {
@@ -105,7 +79,7 @@ func (profile *Profile) Name() string {
 }
 
 func (profile *Profile) getConfig() (*profileConfig, error) {
-	if profile.profileConfig == nil {
+	if profile.profConfig == nil {
 		profileConfig := &profileConfig{
 			file: filepath.Join(profile.dir, profileConfigFileName),
 		}
@@ -115,9 +89,9 @@ func (profile *Profile) getConfig() (*profileConfig, error) {
 		if err := profileConfig.decrypt(); err != nil {
 			return nil, err
 		}
-		profile.profileConfig = profileConfig
+		profile.profConfig = profileConfig
 	}
-	return profile.profileConfig, nil
+	return profile.profConfig, nil
 }
 
 func (profile *Profile) getRemote() (*remote, error) {
@@ -134,37 +108,44 @@ func (profile *Profile) getRemote() (*remote, error) {
 	return profile.remote, nil
 }
 
-func (profile *Profile) pull(setup bool) error {
+func (profile *Profile) Pull() error {
 	remote, err := profile.getRemote()
 	if err != nil {
 		return err
 	}
-	if setup {
-		err = (remote.setup)(profile.dataDir, profile.profileConfig.Config)
+	profConfig, err := profile.getConfig()
+	if err != nil {
+		return err
+	}
+	if commons.DirExists(profile.dataDir) {
+		err = (remote.pull)(profile.dataDir, profConfig.Config)
 	} else {
-		err = (remote.pull)(profile.dataDir, profile.profileConfig.Config)
+		err = (remote.setup)(profile.dataDir, profConfig.Config)
 	}
 	if err == nil {
 		profile.envManifest = nil
 		profile.settings = nil
-		profile.profileConfig.SyncedAt = time.Now()
-		err = profile.profileConfig.write()
+		profConfig.SyncedAt = time.Now()
+		err = profConfig.write()
 	}
 	return err
 }
 
-func (profile *Profile) Pull() error {
-	return profile.pull(false)
-}
-
 func (profile *Profile) pullOnDue() error {
-	if time.Since(profile.profileConfig.SyncedAt) < profile.profileConfig.SyncInterval {
+	profConfig, err := profile.getConfig()
+	if err != nil {
+		return err
+	}
+	if commons.DirExists(profile.dataDir) && time.Since(profConfig.SyncedAt) < profConfig.SyncInterval {
 		return nil
 	}
 	return profile.Pull()
 }
 
 func (profile *Profile) IsPushSupported() bool {
+	if profConfig, err := profile.getConfig(); err == nil && profConfig.ReadOnly {
+		return false
+	}
 	remote, err := profile.getRemote()
 	if err != nil {
 		return false
@@ -176,14 +157,18 @@ func (profile *Profile) Push(note string) (err error) {
 	if !profile.IsPushSupported() {
 		return errRemotePushNotSupported
 	}
-	if err = (profile.remote.push)(profile.dataDir, profile.profileConfig.Config, note); err == nil {
-		profile.profileConfig.SyncedAt = time.Now()
-		err = profile.profileConfig.write()
+	profConfig, err := profile.getConfig()
+	if err != nil {
+		return err
+	}
+	if err = (profile.remote.push)(profile.dataDir, profConfig.Config, note); err == nil {
+		profConfig.SyncedAt = time.Now()
+		err = profConfig.write()
 	}
 	return
 }
 
-func createProfile(name, dir, remoteType string, updateInterval time.Duration, remoteConfig map[string]string) (profile *Profile, err error) {
+func createProfile(name, dir, remoteType string, readOnly bool, updateInterval time.Duration, remoteConfig map[string]string) (profile *Profile, err error) {
 	if commons.DirExists(dir) {
 		return nil, errProfilePathExistsAlready
 	}
@@ -209,14 +194,15 @@ func createProfile(name, dir, remoteType string, updateInterval time.Duration, r
 			name:    name,
 			dir:     dir,
 			dataDir: profileDataDir,
-			profileConfig: &profileConfig{
+			profConfig: &profileConfig{
 				RemoteType:   remoteType,
+				ReadOnly:     readOnly,
 				SyncInterval: updateInterval,
 				Config:       remoteConfig,
 				file:         filepath.Join(dir, profileConfigFileName),
 			},
 		}
-		err = profile.profileConfig.write()
+		err = profile.profConfig.write()
 	}
 	if err != nil {
 		os.RemoveAll(dir)

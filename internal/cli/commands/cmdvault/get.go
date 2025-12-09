@@ -10,13 +10,13 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	"slv.sh/slv/internal/cli/commands/utils"
-	"slv.sh/slv/internal/core/secretkey"
+	"slv.sh/slv/internal/core/session"
 	"slv.sh/slv/internal/core/vaults"
 )
 
 func unlockVault(vault *vaults.Vault) {
 	if vault.IsLocked() {
-		envSecretKey, err := secretkey.Get()
+		envSecretKey, err := session.GetSecretKey()
 		if err != nil {
 			utils.ExitOnError(err)
 		}
@@ -29,7 +29,7 @@ func unlockVault(vault *vaults.Vault) {
 func getVaultItemMap(vault *vaults.Vault, itemName string, encodeToBase64, withMetadata bool) map[string]any {
 	type itemInfo struct {
 		Value       string `json:"value,omitempty" yaml:"value,omitempty"`
-		IsSecret    bool   `json:"isSecret,omitempty" yaml:"isSecret,omitempty"`
+		IsPlaintext bool   `json:"isPlaintext,omitempty" yaml:"isPlaintext,omitempty"`
 		EncryptedAt string `json:"encryptedAt,omitempty" yaml:"encryptedAt,omitempty"`
 		Hash        string `json:"hash,omitempty" yaml:"hash,omitempty"`
 	}
@@ -42,11 +42,11 @@ func getVaultItemMap(vault *vaults.Vault, itemName string, encodeToBase64, withM
 			utils.ExitOnError(err)
 		}
 	} else {
-		var item *vaults.VaultItem
-		if !vault.Exists(itemName) {
+		item, _ := vault.Get(itemName)
+		if item == nil {
 			utils.ExitOnError(fmt.Errorf("item %s not found", itemName))
 		}
-		if item.IsSecret() {
+		if !item.IsPlaintext() {
 			unlockVault(vault)
 		}
 		if item, err = vault.Get(itemName); err != nil {
@@ -57,7 +57,7 @@ func getVaultItemMap(vault *vaults.Vault, itemName string, encodeToBase64, withM
 	for name, item := range vaultItemMap {
 		itemValue, err := item.Value()
 		if err != nil {
-			utils.ExitOnError(err)
+			utils.ExitOnError(fmt.Errorf("error getting value for %s: %w", name, err))
 		}
 		var valueStr string
 		if encodeToBase64 {
@@ -67,8 +67,8 @@ func getVaultItemMap(vault *vaults.Vault, itemName string, encodeToBase64, withM
 		}
 		if withMetadata {
 			fi := itemInfo{
-				Value:    valueStr,
-				IsSecret: item.IsSecret(),
+				Value:       valueStr,
+				IsPlaintext: item.IsPlaintext(),
 			}
 			if item.EncryptedAt() != nil {
 				fi.EncryptedAt = item.EncryptedAt().Format(time.RFC3339)
@@ -89,7 +89,7 @@ func vaultGetCommand() *cobra.Command {
 		vaultGetCmd = &cobra.Command{
 			Use:     "get",
 			Aliases: []string{"show", "view", "read", "export", "dump"},
-			Short:   "Get a secret from the vault",
+			Short:   "Get one or more values or list the vault in desired format",
 			Run: func(cmd *cobra.Command, args []string) {
 				vaultFile := cmd.Flag(vaultFileFlag.Name).Value.String()
 				itemName := cmd.Flag(itemNameFlag.Name).Value.String()
@@ -128,14 +128,14 @@ func vaultGetCommand() *cobra.Command {
 						unlockVault(vault)
 						showVault(vault)
 					} else {
-						if !vault.Exists(itemName) {
+						if !vault.ItemExists(itemName) {
 							utils.ExitOnError(fmt.Errorf("item %s not found", itemName))
 						}
 						item, err := vault.Get(itemName)
 						if err != nil {
 							utils.ExitOnError(err)
 						}
-						if item.IsSecret() {
+						if !item.IsPlaintext() {
 							unlockVault(vault)
 						}
 						if itemValueStr, err := item.ValueString(); err != nil {

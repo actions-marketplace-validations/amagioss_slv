@@ -8,7 +8,7 @@ import (
 	"slv.sh/slv/internal/cli/commands/cmdenv"
 	"slv.sh/slv/internal/cli/commands/utils"
 	"slv.sh/slv/internal/core/crypto"
-	"slv.sh/slv/internal/core/secretkey"
+	"slv.sh/slv/internal/core/session"
 	"slv.sh/slv/internal/core/vaults"
 )
 
@@ -39,11 +39,11 @@ func vaultAccessCommand() *cobra.Command {
 func vaultAccessAddCommand() *cobra.Command {
 	if vaultAccessAddCmd == nil {
 		vaultAccessAddCmd = &cobra.Command{
-			Use:     "add",
-			Aliases: []string{"allow", "grant", "share"},
-			Short:   "Adds access to a vault for the given environments/public keys",
+			Use:     "grant",
+			Aliases: []string{"allow", "add", "share"},
+			Short:   "Grants read access to a vault for the given environments/public keys",
 			Run: func(cmd *cobra.Command, args []string) {
-				envSecretKey, err := secretkey.Get()
+				envSecretKey, err := session.GetSecretKey()
 				if err != nil {
 					utils.ExitOnError(err)
 				}
@@ -63,7 +63,7 @@ func vaultAccessAddCommand() *cobra.Command {
 							}
 						}
 						if err == nil {
-							fmt.Println("Shared vault:", color.GreenString(vaultFile))
+							fmt.Println("Added vault access:", color.GreenString(vaultFile))
 							utils.SafeExit()
 						}
 					}
@@ -78,8 +78,8 @@ func vaultAccessAddCommand() *cobra.Command {
 func vaultAccessRemoveCommand() *cobra.Command {
 	if vaultAccessRemoveCmd == nil {
 		vaultAccessRemoveCmd = &cobra.Command{
-			Use:     "remove",
-			Aliases: []string{"rm", "deny", "revoke", "restrict", "delete", "del"},
+			Use:     "rm",
+			Aliases: []string{"remove", "deny", "revoke", "restrict", "delete", "del"},
 			Short:   "Remove access to a vault for the given environments/public keys",
 			Run: func(cmd *cobra.Command, args []string) {
 				vaultFile := cmd.Flag(vaultFileFlag.Name).Value.String()
@@ -91,13 +91,13 @@ func vaultAccessRemoveCommand() *cobra.Command {
 				vault, err := vaults.Get(vaultFile)
 				if err == nil {
 					var envSecretKey *crypto.SecretKey
-					if envSecretKey, err = secretkey.Get(); err == nil {
+					if envSecretKey, err = session.GetSecretKey(); err == nil {
 						err = vault.Unlock(envSecretKey)
 					}
 					if err == nil {
 						pq, _ := cmd.Flags().GetBool(utils.QuantumSafeFlag.Name)
 						if err = vault.Revoke(publicKeys, pq); err == nil {
-							fmt.Println("Shared vault:", color.GreenString(vaultFile))
+							fmt.Println("Revoked vault access:", color.GreenString(vaultFile))
 							utils.SafeExit()
 						}
 					}

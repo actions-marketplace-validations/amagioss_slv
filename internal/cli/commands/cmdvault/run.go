@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"slv.sh/slv/internal/cli/commands/utils"
 	"slv.sh/slv/internal/core/config"
-	"slv.sh/slv/internal/core/secretkey"
+	"slv.sh/slv/internal/core/session"
 	"slv.sh/slv/internal/core/vaults"
 )
 
@@ -42,7 +42,7 @@ func runVaultCommand(shell bool, vaultFile, prefix, command string, args ...stri
 	if err != nil {
 		utils.ExitOnError(err)
 	}
-	envSecretKey, err := secretkey.Get()
+	envSecretKey, err := session.GetSecretKey()
 	if err != nil {
 		utils.ExitOnError(err)
 	}
@@ -74,10 +74,10 @@ func runVaultCommand(shell bool, vaultFile, prefix, command string, args ...stri
 		fullCommand += " " + strings.Join(args, " ")
 	}
 	if shell {
-		fmt.Printf("Initializing %s session with secrets loaded into environment variables from the vault %s...\n",
+		fmt.Printf("Initialized %s session with secrets loaded as environment variables from the vault %s.\n",
 			config.AppNameUpperCase, color.CyanString(vaultFile))
 	} else {
-		fmt.Printf("Running command [%s] with secrets loaded into environment variables from the vault %s...\n",
+		fmt.Printf("Running command [%s] with secrets loaded as environment variables from the vault %s.\n",
 			color.CyanString(fullCommand), color.CyanString(vaultFile))
 	}
 	if prefix != "" {
@@ -108,7 +108,7 @@ func vaultRunCommand() *cobra.Command {
 		vaultRunCmd = &cobra.Command{
 			Use:     "run",
 			Aliases: []string{"shell", "session", "venv", "vitualenv"},
-			Short:   "Opens a shell with the vault items loaded as environment variables [optinally run a command]",
+			Short:   "Runs the given command or opens a shell with the vault items loaded as environment variables",
 			Run: func(cmd *cobra.Command, args []string) {
 				vaultFile := cmd.Flag(vaultFileFlag.Name).Value.String()
 				command := cmd.Flag(vaultShellCommandFlag.Name).Value.String()

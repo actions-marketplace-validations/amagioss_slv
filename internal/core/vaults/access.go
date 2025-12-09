@@ -5,6 +5,9 @@ import (
 )
 
 func (vlt *Vault) Share(publicKey *crypto.PublicKey) (bool, error) {
+	if !vlt.Spec.writable {
+		return false, errVaultNotWritable
+	}
 	return vlt.share(publicKey, true)
 }
 
@@ -35,6 +38,9 @@ func (vlt *Vault) share(publicKey *crypto.PublicKey, commit bool) (bool, error) 
 }
 
 func (vlt *Vault) Revoke(publicKeys []*crypto.PublicKey, quantumSafe bool) (err error) {
+	if !vlt.Spec.writable {
+		return errVaultNotWritable
+	}
 	var vaultItemsMap map[string]*VaultItem
 	if vaultItemsMap, err = vlt.GetAllItems(); err != nil {
 		return err
@@ -97,7 +103,7 @@ func (vlt *Vault) Revoke(publicKeys []*crypto.PublicKey, quantumSafe bool) (err 
 		}
 	}
 	for name, vaultItem := range vaultItemsMap {
-		if err = vlt.putWithoutCommit(name, vaultItem.value, vaultItem.isSecret); err != nil {
+		if err = vlt.putWithoutCommit(name, vaultItem.value, !vaultItem.IsPlaintext()); err != nil {
 			return err
 		}
 	}
@@ -123,20 +129,22 @@ func (vlt *Vault) ListAccessors() ([]crypto.PublicKey, error) {
 	return accessors, nil
 }
 
-func (vlt *Vault) Unlock(secretKey *crypto.SecretKey) error {
-	if !vlt.IsLocked() {
-		return nil
+func (vlt *Vault) IsAccessibleBy(secretKey *crypto.SecretKey) bool {
+	pubKeyEC, err := secretKey.PublicKey(false)
+	if err != nil {
+		return false
+	}
+	pubKeyPQ, err := secretKey.PublicKey(true)
+	if err != nil {
+		return false
 	}
 	for _, wrappedKeyStr := range vlt.Spec.Config.WrappedKeys {
 		wrappedKey := &crypto.WrappedKey{}
-		if err := wrappedKey.FromString(wrappedKeyStr); err != nil {
-			return err
-		}
-		decryptedKey, err := secretKey.DecryptKey(*wrappedKey)
-		if err == nil {
-			vlt.Spec.secretKey = decryptedKey
-			return nil
+		if err := wrappedKey.FromString(wrappedKeyStr); err == nil {
+			if wrappedKey.IsEncryptedBy(pubKeyEC) || wrappedKey.IsEncryptedBy(pubKeyPQ) {
+				return true
+			}
 		}
 	}
-	return errVaultNotAccessible
+	return false
 }

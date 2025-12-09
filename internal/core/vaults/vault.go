@@ -7,8 +7,10 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"slv.sh/slv/internal/core/commons"
 	"slv.sh/slv/internal/core/config"
@@ -22,8 +24,8 @@ type vaultConfig struct {
 }
 
 type Vault struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
+	metav1.TypeMeta   `json:",inline" yaml:",inline"`
+	metav1.ObjectMeta `json:"metadata" yaml:"metadata"`
 
 	Type string     `json:"type,omitempty" yaml:"type,omitempty"`
 	Spec *VaultSpec `json:"spec" yaml:"spec"`
@@ -32,11 +34,12 @@ type Vault struct {
 type VaultSpec struct {
 	Data                map[string]string     `json:"slvData,omitempty" yaml:"slvData,omitempty"`
 	Config              vaultConfig           `json:"slvConfig" yaml:"slvConfig"`
-	path                string                `json:"-"`
-	publicKey           *crypto.PublicKey     `json:"-"`
-	secretKey           *crypto.SecretKey     `json:"-"`
-	cache               map[string]*VaultItem `json:"-"`
-	vaultSecretRefRegex *regexp.Regexp        `json:"-"`
+	writable            bool                  `json:"-" yaml:"-"`
+	path                string                `json:"-" yaml:"-"`
+	publicKey           *crypto.PublicKey     `json:"-" yaml:"-"`
+	secretKey           *crypto.SecretKey     `json:"-" yaml:"-"`
+	cache               map[string]*VaultItem `json:"-" yaml:"-"`
+	vaultSecretRefRegex *regexp.Regexp        `json:"-" yaml:"-"`
 }
 
 func (vlt *Vault) getPublicKey() (publicKey *crypto.PublicKey, err error) {
@@ -54,12 +57,12 @@ func (vlt *Vault) getPublicKey() (publicKey *crypto.PublicKey, err error) {
 
 func isValidVaultFileName(fileName string) bool {
 	return strings.HasSuffix(fileName, "."+vaultFileNameRawExt) ||
-		strings.HasSuffix(fileName, vaultFileNameRawExt+".yaml") ||
-		strings.HasSuffix(fileName, vaultFileNameRawExt+".yml")
+		strings.HasSuffix(fileName, "."+vaultFileNameRawExt+".yaml") ||
+		strings.HasSuffix(fileName, "."+vaultFileNameRawExt+".yml")
 }
 
 // Returns new vault instance and the vault contents set into the specified field. The vault file name must end with .slv.yaml or .slv.yml.
-func New(vaultFile, name, k8sNamespace string, k8SecretContent []byte, hash, quantumSafe bool, publicKeys ...*crypto.PublicKey) (vlt *Vault, err error) {
+func New(vaultFile, name, k8sNamespace string, hash, quantumSafe bool, publicKeys ...*crypto.PublicKey) (vlt *Vault, err error) {
 	if !isValidVaultFileName(vaultFile) {
 		vaultFile = vaultFile + vaultFileNameDesiredExt
 	}
@@ -90,9 +93,11 @@ func New(vaultFile, name, k8sNamespace string, k8SecretContent []byte, hash, qua
 			Kind:       k8sKind,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:      name,
+			Namespace: k8sNamespace,
 		},
 		Spec: &VaultSpec{
+			writable:  true,
 			publicKey: vaultPublicKey,
 			Config: vaultConfig{
 				PublicKey: vaultPubKeyStr,
@@ -107,34 +112,38 @@ func New(vaultFile, name, k8sNamespace string, k8SecretContent []byte, hash, qua
 			return nil, err
 		}
 	}
-	if k8SecretContent != nil {
-		err = vlt.Update(name, k8sNamespace, k8SecretContent)
-	} else {
-		err = vlt.commit()
-	}
-	return
+	return vlt, vlt.commit()
 }
 
-// Returns the vault instance from a given yaml. The vault file name must end with .slv.yaml or .slv.yml.
-func Get(vaultFile string) (vlt *Vault, err error) {
-	if !isValidVaultFileName(vaultFile) {
-		return nil, errInvalidVaultFileName
-	}
-	if !commons.FileExists(vaultFile) {
+// Returns the vault instance for a given file or URL. The vault file path must end with .slv.yaml or .slv.yml.
+func Get(vaultFileOrURL string) (vlt *Vault, err error) {
+	var contents []byte
+	var writable bool
+	if strings.HasPrefix(vaultFileOrURL, "http://") || strings.HasPrefix(vaultFileOrURL, "https://") {
+		headers := make(map[string]string)
+		headers["User-Agent"] = config.AppNameUpperCase + "-" + config.Version + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
+		contents, err = commons.GetURLContents(vaultFileOrURL, headers)
+	} else if !commons.FileExists(vaultFileOrURL) {
 		return nil, errVaultNotFound
+	} else {
+		writable = true
+		contents, err = os.ReadFile(vaultFileOrURL)
+	}
+	if err != nil {
+		return nil, err
 	}
 	obj := make(map[string]any)
-	if err := commons.ReadFromYAML(vaultFile, &obj); err != nil {
+	if err = yaml.Unmarshal(contents, &obj); err != nil {
 		return nil, err
 	}
 	jsonData, err := json.Marshal(obj)
 	if err != nil {
 		return nil, err
 	}
-	return get(jsonData, vaultFile, obj[k8sVaultSpecField] != nil)
+	return get(jsonData, vaultFileOrURL, obj[k8sVaultSpecField] != nil, writable)
 }
 
-func get(jsonData []byte, filePath string, fullVault bool) (vlt *Vault, err error) {
+func get(jsonData []byte, filePath string, fullVault, writable bool) (vlt *Vault, err error) {
 	if fullVault {
 		vlt = &Vault{}
 		if err = json.Unmarshal(jsonData, vlt); err != nil {
@@ -150,6 +159,7 @@ func get(jsonData []byte, filePath string, fullVault bool) (vlt *Vault, err erro
 		}
 	}
 	vlt.Spec.path = filePath
+	vlt.Spec.writable = writable
 	err = vlt.validateAndUpdate()
 	return
 }
@@ -169,6 +179,9 @@ func (vlt *Vault) Delete() error {
 }
 
 func (vlt *Vault) commit() error {
+	if !vlt.Spec.writable {
+		return errVaultNotWritable
+	}
 	if err := vlt.validateAndUpdate(); err != nil {
 		return err
 	}
@@ -180,9 +193,7 @@ func (vlt *Vault) commit() error {
 	if err = json.Unmarshal(jsonData, &data); err != nil {
 		return fmt.Errorf("error unmarshaling JSON: %w", err)
 	}
-	return commons.WriteToYAML(vlt.Spec.path,
-		"# Use the pattern "+vlt.getDataRef("YOUR_SECRET_NAME")+
-			" as placeholder to reference data from this vault into files.\n", data)
+	return commons.WriteToYAML(vlt.Spec.path, data)
 }
 
 func (vlt *Vault) reload() error {
@@ -216,4 +227,22 @@ func (vlt *Vault) validateAndUpdate() error {
 		return errVaultWrappedKeysNotFound
 	}
 	return nil
+}
+
+func (vlt *Vault) Unlock(secretKey *crypto.SecretKey) error {
+	if !vlt.IsLocked() {
+		return nil
+	}
+	for _, wrappedKeyStr := range vlt.Spec.Config.WrappedKeys {
+		wrappedKey := &crypto.WrappedKey{}
+		if err := wrappedKey.FromString(wrappedKeyStr); err != nil {
+			return err
+		}
+		decryptedKey, err := secretKey.DecryptKey(*wrappedKey)
+		if err == nil {
+			vlt.Spec.secretKey = decryptedKey
+			return nil
+		}
+	}
+	return errVaultNotAccessible
 }

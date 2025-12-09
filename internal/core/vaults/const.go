@@ -11,7 +11,7 @@ import (
 
 const (
 	vaultFileNameRawExt                        = config.AppNameLowerCase
-	vaultFileNameDesiredExt                    = vaultFileNameRawExt + ".yaml"
+	vaultFileNameDesiredExt                    = "." + vaultFileNameRawExt + ".yaml"
 	VaultKey                    crypto.KeyType = 'V'
 	vaultIdLength                              = 30
 	secretNamePattern                          = `([\w]+)`
@@ -30,9 +30,8 @@ var (
 	unsupportedSecretNameCharRegex = regexp.MustCompile(`[^\w]`)
 	secretRefRegex                 = regexp.MustCompile(strings.ReplaceAll(secretRefPatternBase, vaultNamePatternPlaceholder, vaultNamePattern))
 
-	errInvalidVaultFileName         = errors.New("invalid vault file name [vault file name must end with " + vaultFileNameRawExt + ".yaml or " + vaultFileNameRawExt + ".yml]")
 	errVaultDirPathCreation         = errors.New("error in creating a new vault directory path")
-	errVaultNotAccessible           = errors.New("vault is not accessible using the given environment key")
+	errVaultNotAccessible           = errors.New("vault is not accessible by the environment")
 	errVaultLocked                  = errors.New("the vault is currently locked")
 	errVaultExists                  = errors.New("vault exists already")
 	errVaultNotFound                = errors.New("vault not found")
@@ -42,7 +41,8 @@ var (
 	errVaultItemNotFound            = errors.New("no item found for the given name")
 	errVaultPublicKeyNotFound       = errors.New("vault public key not found")
 	errInvalidReferenceFormat       = errors.New("invalid reference format. references must follow the pattern {{" + config.AppNameUpperCase + ".<vault_name>.<secret_name>}} to allow dereferencing")
-	errInvalidImportDataFormat      = errors.New("invalid import data format - expected a map of string to string [secretName: secretValue] in YAML/JSON format")
+	errInvalidImportDataFormat      = errors.New("invalid import data format - expected a map of string to string [secretName: secretValue] in YAML/JSON/ENV format")
 	errK8sNameRequired              = errors.New("k8s resource name is required for a k8s compatible SLV vault")
 	errVaultWrappedKeysNotFound     = errors.New("vault wrapped keys not found - vault will be inaccessible by any environment")
+	errVaultNotWritable             = errors.New("vault is not writable")
 )

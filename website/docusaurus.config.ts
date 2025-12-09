@@ -7,7 +7,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Secure Local Vault (SLV)',
   tagline: 'Securely store, share, and access secrets alongside the codebase.',
-  // favicon: 'img/favicon.ico',
+  favicon: 'img/slv.svg',
 
   // Set the production url of your site here
   url: 'https://slv.sh',
@@ -69,15 +69,40 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
   
+  plugins: [
+    [
+      require.resolve('@easyops-cn/docusaurus-search-local'),
+      {
+        // Options for local search
+        indexBlog: true, // Index blog posts at /blog path
+        indexPages: true, // Set to true if you want to index pages
+        docsRouteBasePath: '/docs', // Base path for docs
+        blogRouteBasePath: '/blog', // Base path for blog
+        language: ['en'], // Languages to index
+        hashed: true, // Use hashed file names for better caching
+        highlightSearchTermsOnTargetPage: true, // Highlight search terms on the target page
+        searchResultLimits: 8, // Maximum number of search results to display
+        searchResultContextMaxLength: 50, // Maximum length of context around search terms
+        // Disable search page - only use modal search
+        explicitSearchResultPath: false,
+      },
+    ],
+  ],
+  
   themeConfig: {
     // Replace with your project's social card
     image: 'img/slv-social-card.jpg',
+    colorMode: {
+      defaultMode: 'dark',
+      disableSwitch: false,
+      respectPrefersColorScheme: false,
+    },
     navbar: {
       title: 'SLV',
-      // logo: {
-      //   alt: 'My Site Logo',
-      //   src: 'img/logo.svg',
-      // },
+      logo: {
+        alt: 'SLV Logo',
+        src: 'img/slv.svg',
+      },
       items: [
         {
           type: 'docSidebar',
@@ -105,48 +130,8 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      links: [
-        // {
-        //   title: 'Docs',
-        //   items: [
-        //     {
-        //       label: 'Tutorial',
-        //       to: '/docs/intro',
-        //     },
-        //   ],
-        // },
-        // {
-          // title: 'Community',
-          // items: [
-          //   {
-          //     label: 'Stack Overflow',
-          //     href: 'https://stackoverflow.com/questions/tagged/docusaurus',
-          //   },
-          //   {
-          //     label: 'Discord',
-          //     href: 'https://discordapp.com/invite/docusaurus',
-          //   },
-          //   {
-          //     label: 'X',
-          //     href: 'https://x.com/docusaurus',
-          //   },
-          // ],
-        // },
-        // {
-        //   title: 'More',
-        //   items: [
-        //     {
-        //       label: 'Blog',
-        //       to: '/blog',
-        //     },
-        //     {
-        //       label: 'GitHub',
-        //       href: 'https://github.com/amagioss/slv',
-        //     },
-        //   ],
-        // },
-      ],
-      // copyright: `Copyright © ${new Date().getFullYear()} SLV, Built with Docusaurus.`,
+      links: [],
+      copyright: `Made with ❤️ from 🇮🇳 for a secure decentralized future.`,
     },
     prism: {
       theme: prismThemes.github,

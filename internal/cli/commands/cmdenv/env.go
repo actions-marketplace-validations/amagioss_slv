@@ -2,7 +2,6 @@ package cmdenv
 
 import (
 	"github.com/spf13/cobra"
-	"slv.sh/slv/internal/core/profiles"
 )
 
 func EnvCommand() *cobra.Command {
@@ -10,21 +9,17 @@ func EnvCommand() *cobra.Command {
 		envCmd = &cobra.Command{
 			Use:     "env",
 			Aliases: []string{"envs", "environment", "environments"},
-			Short:   "Environment operations",
-			Long:    `Environment operations in SLV`,
+			Short:   "Manage SLV environments",
 			Run: func(cmd *cobra.Command, args []string) {
 				cmd.Help()
 			},
 		}
 		envCmd.AddCommand(envNewCommand())
-		envCmd.AddCommand(envListSearchCommand())
+		envCmd.AddCommand(envListCommand())
 		envCmd.AddCommand(envDeleteCommand())
 		envCmd.AddCommand(envSetSelfCommand())
 		envCmd.AddCommand(envShowCommand())
-		profile, _ := profiles.GetActiveProfile()
-		if profile != nil && profile.IsPushSupported() {
-			envCmd.AddCommand(envAddCommand())
-		}
+		envCmd.AddCommand(envAddCommand())
 	}
 	return envCmd
 }

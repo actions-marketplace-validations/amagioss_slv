@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"slv.sh/slv/internal/cli/commands/cmdenv"
@@ -16,6 +15,8 @@ import (
 var (
 	slvCmd     *cobra.Command
 	versionCmd *cobra.Command
+	webCmd     *cobra.Command
+	tuiCmd     *cobra.Command
 
 	versionFlag = utils.FlagDef{
 		Name:      "version",
@@ -44,12 +45,14 @@ func slvCommand() *cobra.Command {
 		slvCmd.AddCommand(cmdenv.EnvCommand())
 		slvCmd.AddCommand(cmdprofile.ProfileCommand())
 		slvCmd.AddCommand(cmdvault.VaultCommand())
+		slvCmd.AddCommand(webCommand())
+		slvCmd.AddCommand(tuiCommand())
 	}
 	return slvCmd
 }
 
 func Run() {
 	if err := slvCommand().Execute(); err != nil {
-		os.Exit(1)
+		utils.ExitOnError(err)
 	}
 }

@@ -20,17 +20,35 @@ spec:
         {{- with .Values.podLabels }}
           {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: slv
         {{- if and (.Values.image) (not (hasSuffix .Chart.Version .Values.image)) -}}
         {{- fail (printf "The image tag must be set to the Chart.Version '%s'" .Chart.Version) -}}
         {{- end }}
         image: {{ .Values.image | default (printf "ghcr.io/amagioss/slv:%s" .Chart.AppVersion) }}
-        imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
         resources:
           {{- toYaml .Values.resource | nindent 10 }}
         env:
+          {{- with .Values.env }}
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
             {{- if ne .Values.k8sSecret ""}}
           - name: SLV_K8S_ENV_SECRET
             value: {{ .Values.k8sSecret }}
@@ -42,6 +60,6 @@ spec:
           - name: SLV_MODE
             value: "k8s_job"
       restartPolicy: Never
-      serviceAccountName: {{ .Values.serviceAccountName | default "slv-serviceaccount" }}
+      serviceAccountName: slv-serviceaccount
   backoffLimit: {{ .Values.backoffLimit | default 4 }}
   {{- end -}}

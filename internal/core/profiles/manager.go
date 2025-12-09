@@ -8,6 +8,8 @@ import (
 
 	"slv.sh/slv/internal/core/commons"
 	"slv.sh/slv/internal/core/config"
+	"slv.sh/slv/internal/core/keystore"
+	"xipher.org/xipher"
 )
 
 type profileManagerConfig struct {
@@ -17,7 +19,7 @@ type profileManagerConfig struct {
 }
 
 func (pmc *profileManagerConfig) write() error {
-	return commons.WriteToYAML(pmc.file, "", pmc)
+	return commons.WriteToYAML(pmc.file, pmc)
 }
 
 func (pmc *profileManagerConfig) getActiveProfile() (*Profile, error) {
@@ -49,7 +51,7 @@ func (pm *profileManager) getConfig() (*profileManagerConfig, error) {
 				return nil, fmt.Errorf("error reading profile manager config file: %w", err)
 			}
 		} else {
-			if err := commons.WriteToYAML(pmcFile, "", pmc); err != nil {
+			if err := commons.WriteToYAML(pmcFile, pmc); err != nil {
 				return nil, fmt.Errorf("error creating profile manager config file: %w", err)
 			}
 		}
@@ -61,43 +63,47 @@ func (pm *profileManager) getConfig() (*profileManagerConfig, error) {
 
 func initProfileManager() error {
 	if profileMgr == nil {
-		registerDefaultRemotes()
-		var manager profileManager
-		manager.dir = filepath.Join(config.GetAppDataDir(), profilesDirName)
-		profileManagerDirInfo, err := os.Stat(manager.dir)
-		if err != nil {
-			err = os.MkdirAll(manager.dir, 0755)
+		profileMgrMutex.Lock()
+		defer profileMgrMutex.Unlock()
+		if profileMgr == nil {
+			registerDefaultRemotes()
+			var manager profileManager
+			manager.dir = filepath.Join(config.GetAppDataDir(), profilesDirName)
+			profileManagerDirInfo, err := os.Stat(manager.dir)
 			if err != nil {
-				return errCreatingProfilesHomeDir
+				err = os.MkdirAll(manager.dir, 0755)
+				if err != nil {
+					return errCreatingProfilesHomeDir
+				}
+			} else if !profileManagerDirInfo.IsDir() {
+				return errInitializingProfileManagementDir
 			}
-		} else if !profileManagerDirInfo.IsDir() {
-			return errInitializingProfileManagementDir
-		}
-		profileManagerDir, err := os.Open(manager.dir)
-		if err != nil {
-			return errOpeningProfileManagementDir
-		}
-		defer profileManagerDir.Close()
-		fileInfoList, err := profileManagerDir.Readdir(-1)
-		if err != nil {
-			return errOpeningProfileManagementDir
-		}
-		manager.profileList = make(map[string]struct{})
-		for _, fileInfo := range fileInfoList {
-			if fileInfo.IsDir() {
-				if isValidProfile(filepath.Join(manager.dir, fileInfo.Name())) {
-					manager.profileList[fileInfo.Name()] = struct{}{}
-				} else {
-					if err := os.RemoveAll(filepath.Join(manager.dir, fileInfo.Name())); err != nil {
-						return fmt.Errorf("error removing invalid profile directory: %w", err)
+			profileManagerDir, err := os.Open(manager.dir)
+			if err != nil {
+				return errOpeningProfileManagementDir
+			}
+			defer profileManagerDir.Close()
+			fileInfoList, err := profileManagerDir.Readdir(-1)
+			if err != nil {
+				return errOpeningProfileManagementDir
+			}
+			manager.profileList = make(map[string]struct{})
+			for _, fileInfo := range fileInfoList {
+				if fileInfo.IsDir() {
+					if isValidProfile(filepath.Join(manager.dir, fileInfo.Name())) {
+						manager.profileList[fileInfo.Name()] = struct{}{}
+					} else {
+						if err := os.RemoveAll(filepath.Join(manager.dir, fileInfo.Name())); err != nil {
+							return fmt.Errorf("error removing invalid profile directory: %w", err)
+						}
 					}
 				}
 			}
+			if _, err = manager.getConfig(); err != nil {
+				return err
+			}
+			profileMgr = &manager
 		}
-		if _, err = manager.getConfig(); err != nil {
-			return err
-		}
-		profileMgr = &manager
 	}
 	return nil
 }
@@ -131,7 +137,7 @@ func Get(profileName string) (profile *Profile, err error) {
 	return
 }
 
-func New(profileName, remoteType string, updateInterval time.Duration, remoteConfig map[string]string) error {
+func New(profileName, remoteType string, readOnly bool, updateInterval time.Duration, remoteConfig map[string]string) error {
 	if profileName == "" {
 		return errInvalidProfileName
 	}
@@ -141,7 +147,7 @@ func New(profileName, remoteType string, updateInterval time.Duration, remoteCon
 	if _, exists := profileMgr.profileList[profileName]; exists {
 		return errProfileExistsAlready
 	}
-	if _, err := createProfile(profileName, filepath.Join(profileMgr.dir, profileName), remoteType, updateInterval, remoteConfig); err != nil {
+	if _, err := createProfile(profileName, filepath.Join(profileMgr.dir, profileName), remoteType, readOnly, updateInterval, remoteConfig); err != nil {
 		return err
 	}
 	profileMgr.profileList[profileName] = struct{}{}
@@ -222,4 +228,23 @@ func Delete(profileName string) error {
 	delete(profileMgr.profileList, profileName)
 	delete(profileMap, profileName)
 	return os.RemoveAll(filepath.Join(profileMgr.dir, profileName))
+}
+
+func getCryptoKey() (*xipher.SecretKey, error) {
+	if profileSK == nil {
+		if skBytes, err := keystore.Get([]byte(profileCryptoKeyName), true); err == keystore.ErrNotFound {
+			if profileSK, err = xipher.NewSecretKey(); err != nil {
+				return nil, fmt.Errorf("error creating new secret key: %w", err)
+			} else if skBytes, err = profileSK.Bytes(); err != nil {
+				return nil, fmt.Errorf("error getting secret key bytes: %w", err)
+			} else if err = keystore.Put([]byte(profileCryptoKeyName), skBytes, true); err != nil {
+				return nil, fmt.Errorf("error saving secret key to keystore: %w", err)
+			}
+		} else if err != nil {
+			return nil, fmt.Errorf("error getting secret key from keystore: %w", err)
+		} else if profileSK, err = xipher.ParseSecretKey(skBytes); err != nil {
+			return nil, fmt.Errorf("error creating secret key from bytes: %w", err)
+		}
+	}
+	return profileSK, nil
 }

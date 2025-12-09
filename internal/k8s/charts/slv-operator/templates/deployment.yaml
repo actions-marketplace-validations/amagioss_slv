@@ -20,8 +20,24 @@ spec:
         {{- with .Values.podLabels }}
           {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
-      serviceAccountName: {{ .Values.serviceAccountName | default "slv-serviceaccount" }}
+      serviceAccountName: slv-serviceaccount
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
@@ -37,7 +53,12 @@ spec:
       {{- end }}
         - name: slv
           image: {{ .Values.image | default (printf "ghcr.io/amagioss/slv:%s" .Chart.AppVersion) }}
-          imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
+          startupProbe:
+            tcpSocket:
+              port: 9443
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            failureThreshold: 100
           resources:
             {{- if .Values.webhook.disableAutomaticCertManagement | default false }}
             limits:
@@ -55,6 +76,9 @@ spec:
               memory: {{ .Values.resource.limits.memory | default "256Mi"}}
             {{- end }}
           env:
+            {{- with .Values.env }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
               {{- if ne .Values.k8sSecret ""}}
             - name: SLV_K8S_ENV_SECRET
               value: {{ .Values.k8sSecret }}
@@ -88,6 +112,3 @@ spec:
             {{- if gt (int .Values.replicas) 1 }}
             - "--leader-elect=true"
             {{- end }}
-
-
-

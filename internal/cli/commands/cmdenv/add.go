@@ -14,44 +14,42 @@ func envAddCommand() *cobra.Command {
 	if envAddCmd == nil {
 		envAddCmd = &cobra.Command{
 			Use:     "add",
-			Aliases: []string{"set", "put"},
-			Short:   "Adds an environment to the active profile",
+			Aliases: []string{"put"},
+			Short:   "Adds/updates an environment into the active profile",
 			Run: func(cmd *cobra.Command, args []string) {
-				envdefs, err := cmd.Flags().GetStringSlice(envDefFlag.Name)
-				if err != nil {
-					utils.ExitOnError(err)
-				}
 				profile, err := profiles.GetActiveProfile()
 				if err != nil {
 					utils.ExitOnError(err)
 				}
+				if !profile.IsPushSupported() {
+					utils.ExitOnError(fmt.Errorf("profile (%s) does not support adding environments", profile.Name()))
+				}
+				envdef, _ := cmd.Flags().GetString(envDefFlag.Name)
 				setAsRoot, _ := cmd.Flags().GetBool(envSetRootFlag.Name)
-				if setAsRoot && len(envdefs) > 1 {
+				if setAsRoot && len(envdef) > 1 {
 					utils.ExitOnError(fmt.Errorf("cannot set more than one environment as root"))
 				}
 				var successMessage string
-				for _, envdef := range envdefs {
-					var env *environments.Environment
-					if env, err = environments.FromEnvDef(envdef); err == nil && env != nil {
-						if setAsRoot {
-							err = profile.SetRoot(env)
-							successMessage = fmt.Sprintf("Successfully set %s as root environment for profile %s", color.GreenString(env.Name), color.GreenString(profile.Name()))
-						} else {
-							err = profile.PutEnv(env)
-						}
-					}
-					if err != nil {
-						utils.ExitOnError(err)
+				var env *environments.Environment
+				if env, err = environments.FromDefStr(envdef); err == nil && env != nil {
+					if setAsRoot {
+						err = profile.SetRoot(env)
+						successMessage = fmt.Sprintf("Successfully set %s as root environment for profile %s", color.GreenString(env.Name), color.GreenString(profile.Name()))
+					} else {
+						err = profile.PutEnv(env)
 					}
 				}
+				if err != nil {
+					utils.ExitOnError(err)
+				}
 				if successMessage == "" {
-					successMessage = fmt.Sprintf("Successfully added %d environment(s) to profile (%s)", len(envdefs), color.GreenString(profile.Name()))
+					successMessage = fmt.Sprintf("Successfully added environment to profile (%s)", color.GreenString(profile.Name()))
 				}
 				fmt.Println(successMessage)
 				utils.SafeExit()
 			},
 		}
-		envAddCmd.Flags().StringSliceP(envDefFlag.Name, envDefFlag.Shorthand, []string{}, envDefFlag.Usage)
+		envAddCmd.Flags().StringP(envDefFlag.Name, envDefFlag.Shorthand, "", envDefFlag.Usage)
 		envAddCmd.Flags().Bool(envSetRootFlag.Name, false, envSetRootFlag.Usage)
 		envAddCmd.MarkFlagRequired(envDefFlag.Name)
 	}

@@ -2,7 +2,10 @@ package profiles
 
 import (
 	"errors"
+	"sync"
 	"time"
+
+	"xipher.org/xipher"
 )
 
 // Errors and constants used by profiles
@@ -18,11 +21,15 @@ const (
 
 	defaultEnvManifestFileName = "environments.yaml"
 	defaultSettingsFileName    = "settings.yaml"
+
+	profileCryptoKeyName = "slv_profiles"
 )
 
 var (
-	profileMgr *profileManager     = nil
-	profileMap map[string]*Profile = make(map[string]*Profile)
+	profileMgrMutex sync.Mutex
+	profileMgr      *profileManager     = nil
+	profileMap      map[string]*Profile = make(map[string]*Profile)
+	profileSK       *xipher.SecretKey
 
 	envManifestFileNames = []string{defaultEnvManifestFileName, "environments.yml"}
 	settingsFileNames    = []string{defaultSettingsFileName, "settings.yml"}

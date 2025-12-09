@@ -3,11 +3,6 @@ package cmdvault
 import (
 	"github.com/spf13/cobra"
 	"slv.sh/slv/internal/cli/commands/utils"
-	"slv.sh/slv/internal/core/config"
-)
-
-const (
-	vaultFileNameExt = config.AppNameLowerCase
 )
 
 var (
@@ -49,9 +44,14 @@ var (
 		Usage: "Namespace for the K8s SLV resource",
 	}
 
+	vaultK8sSecretTypeFlag = utils.FlagDef{
+		Name:  "k8s-secret-type",
+		Usage: "Type of the K8s Secret (e.g. Opaque, kubernetes.io/tls, etc.)",
+	}
+
 	vaultK8sSecretFlag = utils.FlagDef{
 		Name:  "k8s-secret",
-		Usage: "A K8s Secret that needs to be transformed to an SLV vault (Use - to read from stdin)",
+		Usage: "A K8s Secret that needs to be transformed to an SLV vault (Use '-' to read from stdin)",
 	}
 
 	varNamePrefixFlag = utils.FlagDef{
@@ -76,14 +76,14 @@ var (
 		Usage: "Value of the item to be used (Use - to read from stdin)",
 	}
 
-	itemValueFlagDeprecated = utils.FlagDef{
+	deprecatedSecretFlag = utils.FlagDef{
 		Name:  "secret",
-		Usage: "Secret to be added to the vault (Deprecated: Use --value instead)",
+		Usage: "Secret to be added to the vault",
 	}
 
 	vaultImportFileFlag = utils.FlagDef{
 		Name:  "file",
-		Usage: "Path to the YAML/JSON file to be imported",
+		Usage: "Path to the YAML/JSON/ENV file to be imported",
 	}
 
 	plaintextValueFlag = utils.FlagDef{
@@ -116,8 +116,8 @@ var (
 		Usage: "Path to the YAML/JSON/blob file to be referenced",
 	}
 
-	secretRefPreviewOnlyFlag = utils.FlagDef{
+	secretSubstitutionPreviewOnlyFlag = utils.FlagDef{
 		Name:  "preview",
-		Usage: "Preview only mode",
+		Usage: "Enables preview mode (shows the substitution result without writing to the file)",
 	}
 )

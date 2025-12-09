@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 	"slv.sh/slv/internal/core/crypto"
 )
@@ -34,6 +35,9 @@ func (vlt *Vault) putWithoutCommit(name string, value []byte, encrypt bool) (err
 }
 
 func (vlt *Vault) Put(name string, value []byte, encrypt bool) (err error) {
+	if !vlt.Spec.writable {
+		return errVaultNotWritable
+	}
 	if err = vlt.putWithoutCommit(name, value, encrypt); err == nil {
 		err = vlt.commit()
 	}
@@ -41,13 +45,20 @@ func (vlt *Vault) Put(name string, value []byte, encrypt bool) (err error) {
 }
 
 func (vlt *Vault) Import(importData []byte, force, encrypt bool) (err error) {
+	if !vlt.Spec.writable {
+		return errVaultNotWritable
+	}
 	dataMap := make(map[string]string)
 	if err = yaml.Unmarshal(importData, &dataMap); err != nil {
-		return errInvalidImportDataFormat
+		if envMap, err := godotenv.Unmarshal(string(importData)); err != nil {
+			return errInvalidImportDataFormat
+		} else {
+			dataMap = envMap
+		}
 	}
 	if !force {
 		for name := range dataMap {
-			if vlt.Exists(name) {
+			if vlt.ItemExists(name) {
 				return fmt.Errorf("the name %s already exists", name)
 			}
 		}
@@ -60,7 +71,7 @@ func (vlt *Vault) Import(importData []byte, force, encrypt bool) (err error) {
 	return vlt.commit()
 }
 
-func (vlt *Vault) Exists(name string) (exists bool) {
+func (vlt *Vault) ItemExists(name string) (exists bool) {
 	if vlt.Spec.Data != nil {
 		_, exists = vlt.Spec.Data[name]
 	}
@@ -105,8 +116,8 @@ func (vlt *Vault) GetAllValues() (map[string][]byte, error) {
 }
 
 func (vlt *Vault) Get(name string) (*VaultItem, error) {
-	rawValue := vlt.Spec.Data[name]
-	if rawValue == "" {
+	rawValue, ok := vlt.Spec.Data[name]
+	if !ok {
 		return nil, errVaultItemNotFound
 	}
 	item := vlt.getFromCache(name)
@@ -117,12 +128,13 @@ func (vlt *Vault) Get(name string) (*VaultItem, error) {
 		}
 		sealedSecret := &crypto.SealedSecret{}
 		if err := sealedSecret.FromString(rawValue); err == nil {
-			item.isSecret = true
 			item.encryptedAt = new(time.Time)
 			*item.encryptedAt = sealedSecret.EncryptedAt()
 			if sealedSecret.Hash() != "" {
 				item.hash = sealedSecret.Hash()
 			}
+		} else {
+			item.plaintext = true
 		}
 		vlt.putToCache(name, item)
 	}
@@ -142,6 +154,9 @@ func (vlt *Vault) DeleteItem(name string) error {
 }
 
 func (vlt *Vault) DeleteItems(names []string) error {
+	if !vlt.Spec.writable {
+		return errVaultNotWritable
+	}
 	for _, name := range names {
 		delete(vlt.Spec.Data, name)
 		vlt.deleteFromCache(name)
